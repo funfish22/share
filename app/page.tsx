@@ -18,18 +18,19 @@ export default function Home() {
   const [manualUrl, setManualUrl] = useState('');
   const [isClient, setIsClient] = useState(false);
 
-  // 初始化：載入 LocalStorage 與註冊 Service Worker
+  // 安全的佔位圖片字串 (防止被編輯器解析為 Markdown)
+  const errorImageUrl = 'https://' + 'placehold.co/600x400/ffdddd/ff0000?text=Load+Failed';
+  const blockedImageUrl = 'https://' + 'placehold.co/600x400/ffdddd/ff0000?text=Image+Blocked';
+
   useEffect(() => {
     setIsClient(true);
     const saved = JSON.parse(localStorage.getItem('threads_clippings') || '[]');
     setClippings(saved);
 
-    // 註冊 PWA Service Worker
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').catch(console.error);
     }
 
-    // 檢查背景任務
     saved.forEach((clip: Clipping) => {
       if (clip.status === 'loading') {
         fetchOgDataInBackground(clip.id, clip.url);
@@ -37,7 +38,6 @@ export default function Home() {
     });
   }, []);
 
-  // 檢查小飛機分享參數
   useEffect(() => {
     if (!isClient) return;
 
@@ -56,7 +56,6 @@ export default function Home() {
     }
   }, [isClient]);
 
-  // 儲存至 LocalStorage (每當 clippings 改變時)
   useEffect(() => {
     if (isClient) {
       localStorage.setItem('threads_clippings', JSON.stringify(clippings));
@@ -81,7 +80,6 @@ export default function Home() {
 
   const fetchOgDataInBackground = async (id: string, url: string) => {
     try {
-      // 這裡呼叫我們自己寫的 Next.js 後端 API！不會有 CORS 問題！
       const res = await fetch(`/api/og?url=${encodeURIComponent(url)}`);
       const data = await res.json();
 
@@ -102,7 +100,7 @@ export default function Home() {
               status: 'error', 
               title: '預覽載入失敗', 
               description: '無法取得預覽資訊，但仍可點擊開啟連結。',
-              image: '[https://placehold.co/600x400/ffdddd/ff0000?text=Load+Failed](https://placehold.co/600x400/ffdddd/ff0000?text=Load+Failed)' 
+              image: errorImageUrl 
             }
           : clip
       ));
@@ -125,7 +123,6 @@ export default function Home() {
     if(confirm('確定要清空所有網摘嗎？')) setClippings([]);
   };
 
-  // 避免 SSR 渲染不一致
   if (!isClient) return null;
 
   return (
@@ -189,10 +186,22 @@ export default function Home() {
                 );
               }
 
+              // ★ 終極破防機制：透過我們的代理 API 載入圖片 (除非圖片是我們自己的佔位圖)
+              const isPlaceholder = clip.image.includes('placehold.co');
+              const finalImageUrl = isPlaceholder ? clip.image : `/api/image?url=${encodeURIComponent(clip.image)}`;
+
               return (
                 <div key={clip.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition group flex flex-col">
                   <div className="h-48 bg-gray-200 overflow-hidden relative">
-                    <img src={clip.image} alt="Preview" className="w-full h-full object-cover" />
+                    <img 
+                      src={finalImageUrl} 
+                      alt="Preview" 
+                      className="w-full h-full object-cover" 
+                      onError={(e) => {
+                        e.currentTarget.onerror = null; // 防止無限迴圈
+                        e.currentTarget.src = blockedImageUrl;
+                      }}
+                    />
                     <a href={clip.url} target="_blank" rel="noreferrer" className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition flex items-center justify-center">
                       <ExternalLink className="text-white opacity-0 group-hover:opacity-100 drop-shadow-md w-8 h-8" />
                     </a>
@@ -201,7 +210,7 @@ export default function Home() {
                     <h3 className="font-bold text-gray-900 line-clamp-2 mb-2 leading-snug">
                       <a href={clip.url} target="_blank" rel="noreferrer" className="hover:text-blue-600">{clip.title}</a>
                     </h3>
-                    <p className="text-sm text-gray-600 line-clamp-3 mb-4 flex-1">{clip.description}</p>
+                    <p className="text-sm text-gray-600 line-clamp-3 mb-4 flex-1 whitespace-pre-wrap">{clip.description}</p>
                     <div className="flex justify-between items-center mt-auto pt-3 border-t border-gray-100">
                       <span className="text-xs text-gray-400">{dateStr}</span>
                       <button onClick={() => deleteClipping(clip.id)} className="text-gray-400 hover:text-red-500 transition">
