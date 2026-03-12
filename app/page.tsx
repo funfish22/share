@@ -21,7 +21,7 @@ export default function Home() {
   const [selectedCategory, setSelectedCategory] = useState<string>('未分類');
   
   const [manualUrl, setManualUrl] = useState('');
-  const [incomingShareUrl, setIncomingShareUrl] = useState<string | null>(null); // ★ 新增分享中繼狀態
+  const [incomingShareUrl, setIncomingShareUrl] = useState<string | null>(null);
   const [isClient, setIsClient] = useState(false);
 
   const errorImageUrl = 'https://' + 'placehold.co/600x400/ffdddd/ff0000?text=Load+Failed';
@@ -37,8 +37,22 @@ export default function Home() {
       setCategories(savedCategories);
     }
 
+    // ★ 強化版 PWA 自動更新註冊
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').catch(console.error);
+      // 註冊 SW
+      navigator.serviceWorker.register('/sw.js').then(reg => {
+        // 每隔一段時間手動觸發檢查更新 (非必要，但能加快偵測速度)
+        reg.update();
+      }).catch(console.error);
+
+      // 關鍵：監聽 Service Worker 控制權更換 (skipWaiting 觸發時)
+      let refreshing = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (!refreshing) {
+          window.location.reload(); // 自動重新整理以套用新版本
+          refreshing = true;
+        }
+      });
     }
 
     savedClippings.forEach((clip: Clipping) => {
@@ -60,7 +74,6 @@ export default function Home() {
       const targetUrl = matchedUrls ? matchedUrls[0] : null;
 
       if (targetUrl) {
-        // ★ 不再自動儲存，而是開啟選擇分類的視窗
         setIncomingShareUrl(targetUrl);
         window.history.replaceState({}, document.title, window.location.pathname);
       }
@@ -156,7 +169,7 @@ export default function Home() {
   return (
     <div className="bg-gray-50 min-h-screen text-gray-800 pb-10">
       
-      {/* ★ 分享確認彈窗 */}
+      {/* 分享確認彈窗 */}
       {incomingShareUrl && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl animate-in zoom-in duration-200">
